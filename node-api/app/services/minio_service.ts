@@ -1,6 +1,16 @@
 import { Client, ClientOptions } from 'minio';
 import { config } from '../../config/configs';
 
+interface UploadFileResponse {
+  objectName: string;
+  bucketName: string;
+  size: number;
+  contentType: string;
+  etag: string;
+  lastModified: Date;
+  url: string;
+}
+
 class MinioService {
   private client: Client;
   private bucketName: string;
@@ -26,15 +36,9 @@ class MinioService {
   }
 
   // Method to upload a file to MinIO
-  public async uploadFile(file: Express.Multer.File): Promise<{
-    objectName: string;
-    bucketName: string;
-    size: number;
-    contentType: string;
-    etag: string;
-    lastModified: Date;
-    url: string;
-  }> {
+  public async uploadFile(
+    file: Express.Multer.File
+  ): Promise<UploadFileResponse> {
     await this.ensureBucketExists();
 
     const objectName = `${Date.now()}-${file.originalname}`;

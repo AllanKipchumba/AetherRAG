@@ -48,6 +48,12 @@ export class KafkaMessageQueue {
         retries: 8,
       },
       logLevel: logLevel.ERROR,
+      // ssl: {
+      //   rejectUnauthorized: true,
+      //   ca: config.kafka.ca,
+      //   key: config.kafka.key,
+      //   cert: config.kafka.cert,
+      // },
     });
 
     this.producer = this.kafka.producer({
