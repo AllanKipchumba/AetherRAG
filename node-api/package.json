@@ -18,10 +18,14 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "@types/kafkajs": "^1.8.2",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "express-validator": "^7.2.1",
+    "joi": "^17.13.3",
+    "kafkajs": "^2.2.4",
     "minio": "^8.0.5",
-    "multer": "^2.0.1"
+    "multer": "^2.0.1",
+    "uuid": "^11.1.0"
   }
 }
