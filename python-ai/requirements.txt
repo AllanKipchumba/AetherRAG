@@ -1,3 +1,6 @@
 fastapi
 uvicorn[standard]
 kafka-python
+chromadb
+sentence-transformers
+aiohttp
