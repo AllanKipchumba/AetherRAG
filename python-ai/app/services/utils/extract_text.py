@@ -1,27 +1,39 @@
-# import os
-# import fitz  
-# import docx  
-# import textract
+import fitz  # PyMuPDF
+import logging
 
-# def extract_text_from_file(file_path: str) -> str:
-#     ext = os.path.splitext(file_path)[-1].lower()
+logger = logging.getLogger(__name__)
+
+def extract_text_from_pdf(file_path: str) -> str:
+    """
+    Extract text from PDF using PyMuPDF.
     
-#     if ext == ".pdf":
-#         return extract_text_from_pdf(file_path)
-#     elif ext == ".docx":
-#         return extract_text_from_docx(file_path)
-#     elif ext == ".doc":
-#         return extract_text_from_doc(file_path)  # fallback to antiword or similar
-#     else:
-#         raise ValueError(f"Unsupported file type: {ext}")
-
-# def extract_text_from_pdf(file_path: str) -> str:
-#     doc = fitz.open(file_path)
-#     return "\n".join(page.get_text() for page in doc)
-
-# def extract_text_from_docx(file_path: str) -> str:
-#     doc = docx.Document(file_path)
-#     return "\n".join(paragraph.text for paragraph in doc.paragraphs)
-
-# def extract_text_from_doc(file_path: str) -> str:
-#     return textract.process(file_path).decode("utf-8")
+    Args:
+        file_path: Path to the PDF file
+        
+    Returns:
+        str: Extracted text content
+        
+    Raises:
+        Exception: If PDF cannot be processed
+    """
+    doc = None
+    try:
+        doc = fitz.open(file_path)
+        text = ""
+        
+        for page_num, page in enumerate(doc, 1):
+            page_text = page.get_text()
+            if page_text.strip():  # Only add non-empty pages
+                text += page_text + "\n"
+        
+        if not text.strip():
+            raise Exception("No text content found in PDF")
+            
+        return text.strip()
+        
+    except Exception as e:
+        logger.error(f"Failed to extract text from PDF {file_path}: {e}")
+        raise Exception(f"PDF text extraction failed: {e}")
+    finally:
+        if doc:
+            doc.close()

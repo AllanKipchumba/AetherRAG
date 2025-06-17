@@ -1,13 +1,15 @@
 import json
 import uuid
 import asyncio
+import inspect
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Callable, TypedDict
+from typing import Dict, List, Optional, Any, Callable, TypedDict, Union, Awaitable
 from dataclasses import dataclass, asdict
 from kafka import KafkaProducer, KafkaConsumer
 from kafka.errors import KafkaError
 import logging
 import os
+
 
 
 # Configure logging
@@ -30,8 +32,11 @@ class EventMessage:
     payload: Any
     metadata: Metadata
 
-# Type alias for message handler
-MessageHandler = Callable[[str, EventMessage, Dict[str, bytes]], None]
+# Type alias for message handler (now supports both sync and async)
+MessageHandler = Union[
+    Callable[[str, EventMessage, Dict[str, bytes]], None],
+    Callable[[str, EventMessage, Dict[str, bytes]], Awaitable[None]]
+]
 
 class KafkaMessageQueue:
     def __init__(self, config_dict=None):
@@ -171,13 +176,104 @@ class KafkaMessageQueue:
             logger.error(f"Unexpected error publishing message: {e}")
             raise
     
+    async def _call_handler(
+        self, 
+        handler: MessageHandler, 
+        topic: str, 
+        event_message: EventMessage, 
+        headers: Dict[str, bytes]
+    ) -> None:
+        """Call handler whether it's sync or async"""
+        try:
+            if inspect.iscoroutinefunction(handler):
+                await handler(topic, event_message, headers)
+            else:
+                # Run sync handler in a thread pool to avoid blocking
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, handler, topic, event_message, headers)
+        except Exception as e:
+            logger.error(f"Error in message handler: {e}")
+            raise
+
+    async def subscribe_async(
+        self, 
+        topics: List[str], 
+        group_id: str, 
+        message_handler: MessageHandler
+    ) -> None:
+        """Subscribe to topics and process messages asynchronously"""
+        consumer_config = {
+            'bootstrap_servers': self.kafka_config['brokers'],
+            'group_id': group_id,
+            'client_id': self.kafka_config['client_id'],
+            'value_deserializer': lambda m: json.loads(m.decode('utf-8')) if m else {},
+            'key_deserializer': lambda k: k.decode('utf-8') if k else None,
+            'session_timeout_ms': 30000,
+            'heartbeat_interval_ms': 3000,
+            'auto_offset_reset': 'earliest',
+            'enable_auto_commit': True,
+        }
+        
+        # Add SSL configuration if provided
+        if self.kafka_config['ca']:
+            consumer_config.update({
+                'security_protocol': 'SSL',
+                'ssl_check_hostname': True,
+                'ssl_cafile': self.kafka_config['ca'],
+                'ssl_keyfile': self.kafka_config['key'],
+                'ssl_certfile': self.kafka_config['cert'],
+            })
+        
+        try:
+            self.consumer = KafkaConsumer(*topics, **consumer_config)
+            print(f"Subscribed to topics: {topics}")
+            
+            # Process messages in a separate thread to avoid blocking
+            loop = asyncio.get_event_loop()
+            
+            def consume_messages():
+                """Consume messages synchronously in a separate thread"""
+                for message in self.consumer:
+                    try:
+                        # Parse message value into EventMessage
+                        message_data = message.value
+                        if not message_data:
+                            continue
+                        
+                        # Convert dict back to EventMessage
+                        event_message = EventMessage(**message_data)
+                        
+                        # Convert headers to dict
+                        headers = {}
+                        if message.headers:
+                            for key, value in message.headers:
+                                headers[key] = value
+                        
+                        # Schedule the handler to run in the event loop
+                        asyncio.run_coroutine_threadsafe(
+                            self._call_handler(message_handler, message.topic, event_message, headers),
+                            loop
+                        )
+                        
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Error parsing message JSON: {e}")
+                    except Exception as e:
+                        logger.error(f"Error processing message: {e}")
+            
+            # Run the consumer in a thread pool
+            await loop.run_in_executor(None, consume_messages)
+                    
+        except Exception as e:
+            logger.error(f"Error in consumer: {e}")
+            raise
+
     def subscribe(
         self, 
         topics: List[str], 
         group_id: str, 
         message_handler: MessageHandler
     ) -> None:
-        """Subscribe to topics and process messages"""
+        """Subscribe to topics and process messages (synchronous version for backward compatibility)"""
         consumer_config = {
             'bootstrap_servers': self.kafka_config['brokers'],
             'group_id': group_id,
@@ -221,8 +317,13 @@ class KafkaMessageQueue:
                         for key, value in message.headers:
                             headers[key] = value
                     
-                    # Call message handler
-                    message_handler(message.topic, event_message, headers)
+                    # Call message handler - now handles both sync and async
+                    if inspect.iscoroutinefunction(message_handler):
+                        # For async handlers, run in new event loop
+                        asyncio.run(message_handler(message.topic, event_message, headers))
+                    else:
+                        # For sync handlers, call directly
+                        message_handler(message.topic, event_message, headers)
                     
                 except json.JSONDecodeError as e:
                     logger.error(f"Error parsing message JSON: {e}")
@@ -244,15 +345,6 @@ class KafkaMessageQueue:
         """Context manager exit"""
         self.disconnect()
 
-
-# Example message handler
-def example_message_handler(topic: str, message: EventMessage, headers: Dict[str, bytes]) -> None:
-    """Example message handler function"""
-    print(f"Received message on topic {topic}:")
-    print(f"  Event Type: {message.eventType}")
-    print(f"  Source: {message.source}")
-    print(f"  Payload: {message.payload}")
-    print(f"  Headers: {headers}")
 
 # Create singleton instance using global config
 kafka_message_queue = KafkaMessageQueue()

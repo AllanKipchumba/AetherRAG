@@ -4,3 +4,5 @@ kafka-python
 chromadb
 sentence-transformers
 aiohttp
+PyMuPDF
+openai

@@ -9,3 +9,5 @@ venv/
 
 # VS Code settings
 .vscode/
+
+chromadb/

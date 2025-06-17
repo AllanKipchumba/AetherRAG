@@ -1,21 +1,37 @@
 import express from 'express';
 import bodyParser from 'body-parser';
 import apis from './routes/routes';
-import { kafkaMessageQueue } from './app/services/kafka_client';
+import { initializeKafkaListeners } from './app/controllers/prompt/prompt';
+import { log } from './app/utils/logger';
 
+const app = express();
+const PORT = 5000;
+
+// Initialize Kafka listeners
 async function startServer() {
-  await kafkaMessageQueue.connect();
+  try {
+    // Initialize Kafka listeners first
+    await initializeKafkaListeners();
 
-  const app = express();
-  const port = 5000;
+    app.use(bodyParser.json());
 
-  app.use(bodyParser.json());
+    app.use('/', apis);
 
-  app.use('/', apis);
-
-  app.listen(port, () => {
-    console.log(`Server connected on port ${port}`);
-  });
+    // Start the HTTP server
+    app.listen(PORT, () => {
+      log.info(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    log.error('Failed to start server:', error);
+    process.exit(1);
+  }
 }
 
 startServer();
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  log.info('Shutting down server...');
+  // Kafka disconnection is handled in the kafka client
+  process.exit(0);
+});

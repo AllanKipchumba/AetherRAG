@@ -1,14 +1,13 @@
 import aiohttp
 import os
 from sentence_transformers import SentenceTransformer
-import chromadb
-from chromadb.config import Settings
+from chromadb import PersistentClient
 
 # Initialize the embedding model
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Initialize local ChromaDB client
-chroma_client = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet", persist_directory="./chromadb"))
+# Initialize local ChromaDB client (new API)
+chroma_client = PersistentClient(path="./chromadb")
 collection = chroma_client.get_or_create_collection(name="document_embeddings")
 
 async def download_document(url: str) -> str:
